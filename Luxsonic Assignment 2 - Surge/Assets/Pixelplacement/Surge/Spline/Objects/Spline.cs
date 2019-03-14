@@ -8,7 +8,7 @@
 /// </summary>
 
 using UnityEngine;
-using System.Collections;
+using System.Collections.Generic;
 using System;
 
 namespace Pixelplacement
@@ -19,7 +19,22 @@ namespace Pixelplacement
     public class Spline : MonoBehaviour
     {
         //Public Events:
-        public event Action OnSplineShapeChanged;
+        public event Action OnSplineChanged;
+
+        //Private Classes
+        private class SplineReparam
+        {
+            //Public Variables:
+            public float length;
+            public float percentage;
+
+            //Constructors:
+            public SplineReparam(float length, float percentage)
+            {
+                this.length = length;
+                this.percentage = percentage;
+            }
+        }
 
         //Public Variables:
         public Color color = Color.yellow;
@@ -30,23 +45,30 @@ namespace Pixelplacement
         public SplineFollower[] followers;
 
         //Private Variables:
-        SplineAnchor[] _anchors;
-        int _curveCount;
-        int _previousAnchorCount;
-        int _previousChildCount;
-        bool _wasLooping;
-        bool _previousLoopChoice;
-        bool _anchorsChanged;
-        SplineDirection _previousDirection;
-        float _curvePercentage = 0;
-        int _operatingCurve = 0;
-        float _currentCurve = 0;
-        [SerializeField, Tooltip("Optimize by removing all renderers in built projects.")] bool _removeRenderers = true;
-        [SerializeField, Tooltip("Visualizes how fast or slow a curve segment will be. This operation is expensive so turn it off when not needed.")] bool _showVelocityTicks = false;
-        [SerializeField, Tooltip("How many velocity ticks to show per curve segment.")] int _velocityTickCount = 20;
-        [SerializeField, Range(0, 1)] float _velocityTickScale = .5f;
+        private SplineAnchor[] _anchors;
+        private int _curveCount;
+        private int _previousAnchorCount;
+        private int _previousChildCount;
+        private bool _wasLooping;
+        private bool _previousLoopChoice;
+        private bool _anchorsChanged;
+        private SplineDirection _previousDirection;
+        private float _curvePercentage = 0;
+        private int _operatingCurve = 0;
+        private float _currentCurve = 0;
+        [SerializeField, Tooltip("Optimize by removing all renderers in built projects.")] private bool _removeRenderers = true;
+        private int _previousLength;
+        private int _slicesPerCurve = 10;
+        private List<SplineReparam> _splineReparams = new List<SplineReparam>();
+        private bool _lengthDirty = true;
 
         //Public Properties:
+        public float Length
+        {
+            get;
+            private set;
+        }
+
         public SplineAnchor[] Anchors
         {
             get
@@ -89,20 +111,6 @@ namespace Pixelplacement
             {
                 Color secondaryColor = Color.Lerp(color, Color.black, .2f);
                 return secondaryColor;
-            }
-        }
-
-        //Gizmos:
-        private void OnDrawGizmos ()
-        {
-            if (_showVelocityTicks)
-            {
-                for (int i = 0; i < _velocityTickCount; i++)
-                {
-                    float percentage = i / (float)_velocityTickCount;
-                    Gizmos.color = SecondaryColor;
-                    Gizmos.DrawSphere(GetPosition(percentage), toolScale * _velocityTickScale);
-                }
             }
         }
 
@@ -169,6 +177,7 @@ namespace Pixelplacement
             }
 
             //manage anchors:
+            bool anchorChanged = false;
             if (Anchors.Length > 1)
             {
                 for (int i = 0; i < Anchors.Length; i++)
@@ -176,7 +185,7 @@ namespace Pixelplacement
                     //if this spline has changed notify and wipe cached percentage:
                     if (Anchors[i].Changed)
                     {
-                        if (OnSplineShapeChanged != null) OnSplineShapeChanged();
+                        anchorChanged = true;
                         Anchors[i].Changed = false;
                         _anchorsChanged = true;
                     }
@@ -208,41 +217,131 @@ namespace Pixelplacement
                         Anchors[i].SetTangentStatus(true, true);
                     }
                 }
+
             }
+
+            //length changed:
+            if (_previousLength != Anchors.Length || anchorChanged)
+            {
+                HangleLengthChange();
+                _previousLength = Anchors.Length;
+            }
+        }
+
+        //Event Handlers:
+        private void HangleLengthChange()
+        {
+            _lengthDirty = true;
+
+            //fire event:
+            if (OnSplineChanged != null) OnSplineChanged();
+        }
+
+        //Private Methods:
+        private float Reparam(float percent)
+        {
+            if (_lengthDirty) CalculateLength();
+
+            //TODO: consider optimization of reversing this if the percent is > .5f to go in either direction:
+            for (int i = 0; i < _splineReparams.Count; i++)
+            {
+                float currentPercentage = _splineReparams[i].length / Length;
+
+                if (currentPercentage == percent)
+                {
+                    return _splineReparams[i].percentage;
+                }
+
+                if (currentPercentage > percent)
+                {
+                    float fromP = _splineReparams[i - 1].length / Length;
+                    float toP = currentPercentage;
+
+                    //slide scale to 0:
+                    float maxAdjusted = toP - fromP;
+                    float percentAdjusted = percent - fromP;
+
+                    //find out percentage:
+                    float inBetweenPercentage = percentAdjusted / maxAdjusted;
+                    float location = Mathf.Lerp(_splineReparams[i - 1].percentage, _splineReparams[i].percentage, inBetweenPercentage);
+
+                    return location;
+                }
+            }
+
+            return 0;
         }
 
         //Public Methods:
         /// <summary>
+        /// Calculates the length of this spline and puts the result into the Length property.
+        /// </summary>
+        public void CalculateLength()
+        {
+            //prep:
+            int totalSlices = (Anchors.Length - 1) * _slicesPerCurve;
+            Length = 0;
+            _splineReparams.Clear();
+            
+            //initial entries:
+            _splineReparams.Add(new SplineReparam(0, 0));
+
+            //find spline length:
+            for (int i = 1; i < totalSlices + 1; i++)
+            {
+                //percent ends:
+                float percent = i / (float)totalSlices;
+                float previousPercent = (i - 1) / (float)totalSlices;
+
+                //position ends:
+                Vector3 start = GetPosition(previousPercent, false);
+                Vector3 end = GetPosition(percent, false);
+
+                //length:
+                float distance = Vector3.Distance(start, end);
+                Length += distance;
+
+                //reparameterization cache:
+                _splineReparams.Add(new SplineReparam(Length, percent));
+            }
+            
+            _lengthDirty = false;
+            return;
+        }
+
+        /// <summary>
         /// Get the up vector at a percentage along the spline.
         /// </summary>
-        public Vector3 Up(float percentage)
+        public Vector3 Up(float percentage, bool normalized = true)
         {
-            Quaternion lookRotation = Quaternion.LookRotation(GetDirection(percentage));
+            Quaternion lookRotation = Quaternion.LookRotation(GetDirection(percentage, normalized));
             return lookRotation * Vector3.up;
         }
 
         /// <summary>
         /// Get the right vector at a percentage along the spline.
         /// </summary>
-        public Vector3 Right(float percentage)
+        public Vector3 Right(float percentage, bool normalized = true)
         {
-            Quaternion lookRotation = Quaternion.LookRotation(GetDirection(percentage));
+            Quaternion lookRotation = Quaternion.LookRotation(GetDirection(percentage, normalized));
             return lookRotation * Vector3.right;
         }
 
         /// <summary>
         /// Get the forward vector at a percentage along the spline - this is simply a wrapper for the direction since they are the same thing.
         /// </summary>
-        public Vector3 Forward(float percentage)
+        public Vector3 Forward(float percentage, bool normalized = true)
         {
-            return GetDirection(percentage);
+            return GetDirection(percentage, normalized);
         }
 
         /// <summary>
         /// Returns a facing vector at the given percentage along the spline to allow content to properly orient along the spline.
         /// </summary>
-        public Vector3 GetDirection(float percentage)
+        public Vector3 GetDirection(float percentage, bool normalized = true)
         {
+            if (normalized) percentage = Reparam(percentage);
+
             //get direction:
             CurveDetail curveDetail = GetCurve(percentage);
 
@@ -257,8 +356,10 @@ namespace Pixelplacement
         /// <summary>
         /// Returns a position on the spline at the given percentage.
         /// </summary>
-        public Vector3 GetPosition(float percentage, bool evenDistribution = true, int distributionSteps = 100)
+        public Vector3 GetPosition(float percentage, bool normalized = true)
         {
+            if (normalized) percentage = Reparam(percentage);
+
             //evaluate curve:
             CurveDetail curveDetail = GetCurve(percentage);
 
@@ -267,16 +368,18 @@ namespace Pixelplacement
 
             SplineAnchor startAnchor = Anchors[curveDetail.currentCurve];
             SplineAnchor endAnchor = Anchors[curveDetail.currentCurve + 1];
-            return BezierCurves.GetPoint(startAnchor.Anchor.position, endAnchor.Anchor.position, startAnchor.OutTangent.position, endAnchor.InTangent.position, curveDetail.currentCurvePercentage, evenDistribution, distributionSteps);
+            return BezierCurves.GetPoint(startAnchor.Anchor.position, endAnchor.Anchor.position, startAnchor.OutTangent.position, endAnchor.InTangent.position, curveDetail.currentCurvePercentage, true, 100);
         }
 
         /// <summary>
         /// Returns a position on the spline at the given percentage with a relative offset.
         /// </summary>
-        public Vector3 GetPosition(float percentage, Vector3 relativeOffset, bool evenDistribution = true, int distributionSteps = 100)
+        public Vector3 GetPosition(float percentage, Vector3 relativeOffset)
         {
+            percentage = Reparam(percentage);
+
             //get position and look rotation:
-            Vector3 position = GetPosition(percentage, evenDistribution, distributionSteps);
+            Vector3 position = GetPosition(percentage);
             Quaternion lookRotation = Quaternion.LookRotation(GetDirection(percentage));
 
             //get each axis at the current position:
@@ -326,8 +429,7 @@ namespace Pixelplacement
 
             return closestPercentage;
         }
-
-
+        
         /// <summary>
         /// Makes a spline longer.
         /// </summary>

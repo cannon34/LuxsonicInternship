@@ -30,7 +30,7 @@ namespace Pixelplacement
                     _previousFaceDirection = faceDirection;
                     return true;
                 } else {
-                    return false;
+                    return false;	
                 }
             }
         }
@@ -59,7 +59,7 @@ namespace Pixelplacement
                 }
             }
 
-            target.position = spline.GetPosition (percentage);	
+            target.position = spline.GetPosition (percentage);
         }
     }
 }

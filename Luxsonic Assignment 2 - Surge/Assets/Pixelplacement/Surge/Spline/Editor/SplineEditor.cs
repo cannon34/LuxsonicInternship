@@ -15,7 +15,7 @@ namespace Pixelplacement
     [CustomEditor(typeof(Spline))]
     public class SplineEditor : Editor
     {
-        //Private Variables:
+        //Private Variables
         Spline _target;
 
         //Init:

@@ -106,7 +106,7 @@ namespace Pixelplacement
             {
                 float percentage = i/(float)(_vertexCount - 1);
                 float sample = Mathf.Lerp (startPercentage, endPercentage, percentage);
-                _lineRenderer.SetPosition (i, _spline.GetPosition (sample));
+                _lineRenderer.SetPosition (i, _spline.GetPosition(sample, false));
             }
         }
 
