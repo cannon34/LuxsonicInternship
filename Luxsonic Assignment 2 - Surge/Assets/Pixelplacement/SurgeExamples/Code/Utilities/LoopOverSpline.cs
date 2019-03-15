@@ -11,10 +11,13 @@ namespace Pixelplacement
     {
         //Private Methods:
         [SerializeField] Spline _spline;
-        [SerializeField] float _duration = 7;
-        public bool run = true;
+        [SerializeField] float _duration = 20;
+        public bool run = false;
         public bool running = false;
         [SerializeField] SplineAnchor _anchor;
+
+        public GameObject obj;
+        public GameObject rightHand;
 
         //Init:
         void Awake ()
@@ -26,19 +29,16 @@ namespace Pixelplacement
         }
         void Update()
         {
-            _anchor.transform.Translate(Time.deltaTime/10.0f, 0, 0);
-            //_anchor.transform.localPosition = new Vector3(1, 0, 1);
-            if (run)
+            _anchor.transform.localPosition = obj.transform.position;
+            if ((rightHand.transform.position - obj.transform.position).sqrMagnitude > .01)
             {
                 if (!running)
                 {
-                    //_anchor.transform.Translate(0, 0, Time.deltaTime);
-                    //_anchor.transform.position.x += 0.1;
-                    Tween.Spline(_spline, transform, 0, 1, true, _duration, 0, Tween.EaseLinear, Tween.LoopType.Loop);
+                    Tween.Spline(_spline, transform, 0, 1, false, _duration, 0, Tween.EaseLinear, Tween.LoopType.Loop);
                     running = true;
                 }
             }
-            if(!run)
+            else
             {
                 running = false;
                 Tween.Spline(_spline, transform, 0, 0, true, 0, 0, Tween.EaseLinear, Tween.LoopType.Loop);                

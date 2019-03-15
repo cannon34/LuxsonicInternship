@@ -17,6 +17,13 @@ namespace OVRTouchSample
     [RequireComponent(typeof(OVRGrabber))]
     public class Hand : MonoBehaviour
     {
+        //******
+        public GameObject testTube;
+        public GameObject slide;
+        bool slideIsGrabbed;
+        bool tubeIsGrabbed;
+        //******
+
         public const string ANIM_LAYER_NAME_POINT = "Point Layer";
         public const string ANIM_LAYER_NAME_THUMB = "Thumb Layer";
         public const string ANIM_PARAM_NAME_FLEX = "Flex";
@@ -199,6 +206,46 @@ namespace OVRTouchSample
 
             float pinch = OVRInput.Get(OVRInput.Axis1D.PrimaryIndexTrigger, m_controller);
             m_animator.SetFloat("Pinch", pinch);
+
+
+            //******
+            if ((transform.position - testTube.transform.position).sqrMagnitude < .01)
+            {
+                tubeIsGrabbed = true;
+            }
+            else
+            {
+                tubeIsGrabbed = false;
+            }
+            if ((transform.position - slide.transform.position).sqrMagnitude < .01)
+            {
+                slideIsGrabbed = true;
+            }
+            else
+            {
+                slideIsGrabbed = false;
+            }
+
+            // Grab Slide
+            if (slideIsGrabbed == true)
+            {
+                m_animator.SetBool("grabSlide", true);
+            }
+            else
+            {
+                m_animator.SetBool("grabSlide", false);
+            }
+            // Grab Tube
+            if (tubeIsGrabbed == true)
+            {
+                m_animator.SetBool("grabTube", true);
+            }
+            else
+            {
+                m_animator.SetBool("grabTube", false);
+            }
+            //******
+
         }
 
         private float m_collisionScaleCurrent = 0.0f;
